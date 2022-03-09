@@ -7,6 +7,8 @@ class Player{
     public string $color;
     public float $mass;
     public bool $initialized = false;
+    public float $ctxWidth;
+    public float $ctxHeight;
 
 //    public function __construct(){
 //        $this->x=x;

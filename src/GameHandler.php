@@ -16,7 +16,6 @@ class GameHandler implements MessageComponentInterface {
     private \DateTime $lastPointAdded;
     private \DateTime $lastBroadcast;
 
-
     public function __construct() {
         $this->clients = new \SplObjectStorage;
         $this->players = array();
@@ -37,16 +36,12 @@ class GameHandler implements MessageComponentInterface {
         $broadcastDiff = date_diff($this->lastBroadcast, $now);
 
 
-
-
-
-
-        if($pointDiff->f >= 0.5 && count($this->points) < 5000) {
+        if($pointDiff->f >= 0.3 && count($this->points) < 5000) {
             $this->lastPointAdded=$now;
             array_push($this->points, new Point(rand(-5000,5000), rand(-5000,5000)));
         }
 
-        if($broadcastDiff->f>0.2){
+        if($broadcastDiff->f>0.1){
             $this->lastBroadcast=$now;
 
             foreach ($this->clients as $client) {
@@ -54,24 +49,32 @@ class GameHandler implements MessageComponentInterface {
                 $player = $players[$client->resourceId];
                 unset($players[$client->resourceId]);
                 $data = (object)null;
-                $points = $this->points;
+                $points = array();
 
-                foreach ($points as $key => $point){
-                    if(abs($player->x-$point->x)<$player->getSize()
-                        && abs($player->y - $point->y<$player->getSize())){
+
+                foreach ($this->points as $key => $point){
+                    if(abs( $point->x -$player->x) < $player->getSize()
+                        && abs($player->y - $point->y) < $player->getSize()){
+                        echo "EAT\n".count($this->players);
 
                         $player->eat($point->mass);
-                        unset($points[$key]);
                         unset($this->points[$key]);
+                    }
+
+                    $width = $player->ctxWidth;
+                    $height = $player->ctxHeight;
+
+                    $ctxX = $point->getCtxX($player->x, $width);
+                    $ctxY = $point->getCtxY($player->y, $height);
+
+                    if($ctxX >= 0 - $width *0.1 && $ctxX <= $width * 1.1
+                        && $ctxY >= 0 - $height * 0.1 && $ctxY <= $height * 1.1) {
+                        $points[$key] = $point;
                     }
                 }
 
-                $points = array_values($points);
-                $this->points = array_values($this->points);
-                $players = array_values($players);
-
-                $data->points = $points;
-                $data->players = $players;
+                $data->points = array_values($points);
+                $data->players = array_values($players);
                 $data->player = $player;
 
                 $client->send(json_encode($data));
@@ -85,32 +88,34 @@ class GameHandler implements MessageComponentInterface {
     public function onOpen(ConnectionInterface $conn) {
         $this->clients->attach($conn);
         $this->players[$conn->resourceId]=new Player();
+        $this->players[$conn->resourceId]->mass = 700;
     }
 
     public function onMessage(ConnectionInterface $from, $msg) {
 
         $player = json_decode($msg);
 
-        if ($player->x && $player->y && $player->color&&$player->mass){
+        if ($player->x && $player->y && $player->color && $player->mass && $player->ctxHeight && $player->ctxWidth){
             $id = $from->resourceId;
 
             $this->players[$id]->x = $player->x;
             $this->players[$id]->y = $player->y;
-            $this->players[$id]->mass = $player->mass;
             $this->players[$id]->color = $player->color;
+            $this->players[$id]->ctxHeight = $player->ctxHeight;
+            $this->players[$id]->ctxWidth = $player->ctxWidth;
+
             $this->players[$id]->initialized = true;
         }
         else{
             throw new Exception("bad request");
         }
 
-
-
         $this->run();
 
     }
 
     public function onClose(ConnectionInterface $conn) {
+        unset($this->players[$conn->resourceId]);
         $this->clients->detach($conn);
 
         echo "Connection {$conn->resourceId} has disconnected\n";
